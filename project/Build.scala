@@ -63,12 +63,16 @@ object Build extends sbt.Build {
     case (false, _) ⇒ ""
   }
 
-  val stringifiers = crossProject.in(file("."))
+  val sharedDeps = Def.setting(Seq(
+    "org.scalatest" %%% "scalatest" % "3.0.0-M7" % Test
+  ))
+
+  val stringifiers = crossProject.in(file("stringifiers"))
     .settings(buildSettings ++ mavenCentralFrouFrou :_*)
     .settings(
       name                 := "stringifiers",
       description          := "A standardized way of moving types to and from strings",
-      libraryDependencies  += "org.scalatest" %%% "scalatest" % "3.0.0-M7" % "test",
+      libraryDependencies ++= sharedDeps.value,
       manifestSetting
     ).jsSettings(
     scalacOptions       <+= sourceMapTransform
