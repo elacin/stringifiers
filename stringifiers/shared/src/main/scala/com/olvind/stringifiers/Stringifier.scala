@@ -1,5 +1,6 @@
 package com.olvind.stringifiers
 
+import java.net.URI
 import java.util.UUID
 
 import scala.language.implicitConversions
@@ -7,15 +8,18 @@ import scala.reflect.ClassTag
 import scala.util.{Failure, Success, Try}
 
 sealed trait Stringifier[E] {
+  val format: Format
   val typename: String
   def encode(e: E): String
   def decode(str: String): Either[Failed, E]
 }
 
 private final class SimpleStringifier[E: ClassTag](
-  rawDecode: String => E, rawEncode: E => String) extends Stringifier[E] {
+               rawDecode: String => E,
+               rawEncode: E => String,
+  override val format:    Format) extends Stringifier[E] {
 
-  override val typename = implicitly[ClassTag[E]].runtimeClass.getClass.getSimpleName
+  override val typename = implicitly[ClassTag[E]].runtimeClass.getSimpleName
 
   def encode(e: E) = rawEncode(e)
 
@@ -29,8 +33,9 @@ private final class SimpleStringifier[E: ClassTag](
 }
 
 private final class RestrictedStringifier[E](
-  E: Stringifier[E], restricted: Set[E]) extends Stringifier[E] {
-
+  E:          Stringifier[E],
+  restricted: Set[E]) extends Stringifier[E] {
+  override val format   = Format.Enum
   override val typename = E.typename
 
   val restrictedValues =
@@ -48,6 +53,7 @@ private final class RestrictedStringifier[E](
 }
 
 private final class OptionStringifier[E](E: Stringifier[E]) extends Stringifier[Option[E]] {
+  override val format   = E.format
   override val typename = s"Option[${E.typename}"
 
   override def decode(str: String) =
@@ -63,6 +69,7 @@ private final class OptionStringifier[E](E: Stringifier[E]) extends Stringifier[
 private final class ConvertingStringifier[E, F: ClassTag](
   E: Stringifier[E], to: E => F, from: F => E) extends Stringifier[F] {
 
+  override val format   = E.format
   override val typename = implicitly[ClassTag[F]].runtimeClass.getSimpleName
 
   override def decode(str: String) =
@@ -100,9 +107,9 @@ object Stringifier{
 
   def apply[E: Stringifier]: Stringifier[E] = implicitly
 
-  def instance[E: ClassTag](_decode:  String ⇒ E)
+  def instance[E: ClassTag](_decode:  String ⇒ E, format: Format = Format.Text)
                            (_encode:  E      ⇒ String): Stringifier[E] =
-    new SimpleStringifier[E](_decode, _encode)
+    new SimpleStringifier[E](_decode, _encode, format)
 
   def instanceVia[E, F: ClassTag](to: E ⇒ F)(from: F ⇒ E)(implicit E: Stringifier[E]): Stringifier[F] =
     new ConvertingStringifier[E, F](E, to, from)
@@ -113,14 +120,15 @@ object Stringifier{
   implicit def stringifierOps[E](c: Stringifier[E]): StringifierOps[E] =
     new StringifierOps(c)
 
-  implicit val SUnit    = instance[Unit   ](_ => ())        (_ => "()")
-  implicit val SByte    = instance[Byte   ](_.toByte)       (_.toString)
-  implicit val SBoolean = instance[Boolean](_.toBoolean)    (_.toString)
-  implicit val SChar    = instance[Char]   (_.apply(0))     (_.toString)
-  implicit val SFloat   = instance[Float]  (_.toFloat)      (_.toString)
-  implicit val SDouble  = instance[Double] (_.toDouble)     (_.toString)
-  implicit val SInt     = instance[Int]    (_.toInt)        (_.toString)
-  implicit val SLong    = instance[Long]   (_.toLong)       (_.toString)
-  implicit val SString  = instance[String] (nonEmpty)       (identity)
-  implicit val SUUID    = instance[UUID]   (UUID.fromString)(_.toString)
+  implicit val SUnit    = instance[Unit   ](_ => (),         Format.Unit)   (_ => "()")
+  implicit val SByte    = instance[Byte   ](_.toByte,        Format.Int)    (_.toString)
+  implicit val SBoolean = instance[Boolean](_.toBoolean,     Format.Boolean)(_.toString)
+  implicit val SChar    = instance[Char]   (_.apply(0),      Format.Text)   (_.toString)
+  implicit val SFloat   = instance[Float]  (_.toFloat,       Format.Float)  (_.toString)
+  implicit val SDouble  = instance[Double] (_.toDouble,      Format.Float)  (_.toString)
+  implicit val SInt     = instance[Int]    (_.toInt,         Format.Int)    (_.toString)
+  implicit val SLong    = instance[Long]   (_.toLong,        Format.Int)    (_.toString)
+  implicit val SString  = instance[String] (nonEmpty,        Format.Text)   (identity)
+  implicit val SUUID    = instance[UUID]   (UUID.fromString, Format.Uuid)   (_.toString)
+  implicit val SURI     = instance[URI]    (URI.create,      Format.Uri)    (_.toString)
 }
