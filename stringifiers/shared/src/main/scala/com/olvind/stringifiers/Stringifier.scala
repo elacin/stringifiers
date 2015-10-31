@@ -10,16 +10,18 @@ import scala.util.{Failure, Success, Try}
 sealed trait Stringifier[E] {
   val format: Format
   val typename: String
+  val restrictedValues: Option[Set[E]]
   def encode(e: E): String
   def decode(str: String): Either[Failed, E]
 }
 
 private final class SimpleStringifier[E: ClassTag](
+  override val typename:  String,
+  override val format:    Format,
                rawDecode: String => E,
-               rawEncode: E => String,
-  override val format:    Format) extends Stringifier[E] {
+               rawEncode: E => String) extends Stringifier[E] {
 
-  override val typename = implicitly[ClassTag[E]].runtimeClass.getSimpleName
+  override val restrictedValues = None
 
   def encode(e: E) = rawEncode(e)
 
@@ -33,28 +35,30 @@ private final class SimpleStringifier[E: ClassTag](
 }
 
 private final class RestrictedStringifier[E](
-  E:          Stringifier[E],
-  restricted: Set[E]) extends Stringifier[E] {
-  override val format   = Format.Enum
-  override val typename = E.typename
+  E: Stringifier[E], restricted: Set[E]) extends Stringifier[E] {
 
-  val restrictedValues =
+  override val format           = Format.Enum
+  override val typename         = E.typename
+  override val restrictedValues = Some(restricted)
+
+  val restrictedMap: Map[String, E] =
     (restricted foldLeft Map.empty[String, E]){
-      case (map, e) => map + (E.encode(e) -> e)
+      case (map, e) => map + ((E encode e) -> e)
     }
 
   val restrictedStrings = restricted map E.encode
 
   override def decode(str: String) =
-    restrictedValues get str toRight FailedNotInSet(str, typename, restrictedStrings)
+    restrictedMap get str toRight FailedNotInSet(str, typename, restrictedStrings)
 
   override def encode(e: E): String =
     E encode e
 }
 
 private final class OptionStringifier[E](E: Stringifier[E]) extends Stringifier[Option[E]] {
-  override val format   = E.format
-  override val typename = s"Option[${E.typename}"
+  override val format           = E.format
+  override val typename         = s"Option[${E.typename}"
+  override val restrictedValues = E.restrictedValues map (_ map Option.apply)
 
   override def decode(str: String) =
     Some(str.trim) filter (_.nonEmpty) match {
@@ -67,10 +71,10 @@ private final class OptionStringifier[E](E: Stringifier[E]) extends Stringifier[
 }
 
 private final class ConvertingStringifier[E, F: ClassTag](
-  E: Stringifier[E], to: E => F, from: F => E) extends Stringifier[F] {
+  val typename: String, E: Stringifier[E], to: E => F, from: F => E) extends Stringifier[F] {
 
-  override val format   = E.format
-  override val typename = implicitly[ClassTag[F]].runtimeClass.getSimpleName
+  override val restrictedValues = E.restrictedValues map (_ map to)
+  override val format           = E.format
 
   override def decode(str: String) =
     (E decode str).right flatMap {
@@ -84,10 +88,9 @@ private final class ConvertingStringifier[E, F: ClassTag](
     E encode from(f)
 }
 
-
 final class StringifierOps[E](val E: Stringifier[E]) extends AnyVal {
   def xmap[F: ClassTag](to: E ⇒ F)(from: F ⇒ E): Stringifier[F] =
-    new ConvertingStringifier[E, F](E, to, from)
+    new ConvertingStringifier[E, F](Stringifier.typeName[F], E, to, from)
 
   def restricted(es: Set[E]): Stringifier[E] =
     new RestrictedStringifier[E](E, es)
@@ -97,6 +100,9 @@ final class StringifierOps[E](val E: Stringifier[E]) extends AnyVal {
 }
 
 object Stringifier{
+  def typeName[E: ClassTag] =
+    implicitly[ClassTag[E]].runtimeClass.getSimpleName
+
   val nonEmpty: String ⇒ String = _.ensuring(_.nonEmpty)
 
   def encode[E](e: E)(implicit E: Stringifier[E]): String =
@@ -107,10 +113,10 @@ object Stringifier{
 
   def apply[E: ClassTag](_decode:  String ⇒ E, format: Format = Format.Text)
                         (_encode:  E      ⇒ String): Stringifier[E] =
-    new SimpleStringifier[E](_decode, _encode, format)
+    new SimpleStringifier[E](typeName[E], format, _decode, _encode)
 
   def apply[E, F: ClassTag](to: E ⇒ F)(from: F ⇒ E)(implicit E: Stringifier[E]): Stringifier[F] =
-    new ConvertingStringifier[E, F](E, to, from)
+    new ConvertingStringifier[E, F](typeName[F], E, to, from)
 
   implicit def optionStringifier[E](implicit E: Stringifier[E]): Stringifier[Option[E]] =
     new OptionStringifier(E)
