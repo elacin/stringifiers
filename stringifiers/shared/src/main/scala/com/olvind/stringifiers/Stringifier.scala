@@ -105,13 +105,11 @@ object Stringifier{
   def decode[E](s: String)(implicit E: Stringifier[E]): Either[Failed, E] =
     E.decode(s)
 
-  def apply[E: Stringifier]: Stringifier[E] = implicitly
-
-  def instance[E: ClassTag](_decode:  String ⇒ E, format: Format = Format.Text)
-                           (_encode:  E      ⇒ String): Stringifier[E] =
+  def apply[E: ClassTag](_decode:  String ⇒ E, format: Format = Format.Text)
+                        (_encode:  E      ⇒ String): Stringifier[E] =
     new SimpleStringifier[E](_decode, _encode, format)
 
-  def instanceVia[E, F: ClassTag](to: E ⇒ F)(from: F ⇒ E)(implicit E: Stringifier[E]): Stringifier[F] =
+  def apply[E, F: ClassTag](to: E ⇒ F)(from: F ⇒ E)(implicit E: Stringifier[E]): Stringifier[F] =
     new ConvertingStringifier[E, F](E, to, from)
 
   implicit def optionStringifier[E](implicit E: Stringifier[E]): Stringifier[Option[E]] =
@@ -120,15 +118,15 @@ object Stringifier{
   implicit def stringifierOps[E](c: Stringifier[E]): StringifierOps[E] =
     new StringifierOps(c)
 
-  implicit val SUnit    = instance[Unit   ](_ => (),         Format.Unit)   (_ => "()")
-  implicit val SByte    = instance[Byte   ](_.toByte,        Format.Int)    (_.toString)
-  implicit val SBoolean = instance[Boolean](_.toBoolean,     Format.Boolean)(_.toString)
-  implicit val SChar    = instance[Char]   (_.apply(0),      Format.Text)   (_.toString)
-  implicit val SFloat   = instance[Float]  (_.toFloat,       Format.Float)  (_.toString)
-  implicit val SDouble  = instance[Double] (_.toDouble,      Format.Float)  (_.toString)
-  implicit val SInt     = instance[Int]    (_.toInt,         Format.Int)    (_.toString)
-  implicit val SLong    = instance[Long]   (_.toLong,        Format.Int)    (_.toString)
-  implicit val SString  = instance[String] (nonEmpty,        Format.Text)   (identity)
-  implicit val SUUID    = instance[UUID]   (UUID.fromString, Format.Uuid)   (_.toString)
-  implicit val SURI     = instance[URI]    (URI.create,      Format.Uri)    (_.toString)
+  implicit val SUnit    = apply[Unit   ](_ => (),         Format.Unit)   (_ => "()")
+  implicit val SByte    = apply[Byte   ](_.toByte,        Format.Int)    (_.toString)
+  implicit val SBoolean = apply[Boolean](_.toBoolean,     Format.Boolean)(_.toString)
+  implicit val SChar    = apply[Char]   (_.apply(0),      Format.Text)   (_.toString)
+  implicit val SFloat   = apply[Float]  (_.toFloat,       Format.Float)  (_.toString)
+  implicit val SDouble  = apply[Double] (_.toDouble,      Format.Float)  (_.toString)
+  implicit val SInt     = apply[Int]    (_.toInt,         Format.Int)    (_.toString)
+  implicit val SLong    = apply[Long]   (_.toLong,        Format.Int)    (_.toString)
+  implicit val SString  = apply[String] (nonEmpty,        Format.Text)   (identity)
+  implicit val SUUID    = apply[UUID]   (UUID.fromString, Format.Uuid)   (_.toString)
+  implicit val SURI     = apply[URI]    (URI.create,      Format.Uri)    (_.toString)
 }

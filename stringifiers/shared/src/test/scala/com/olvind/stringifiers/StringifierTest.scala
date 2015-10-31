@@ -9,7 +9,7 @@ class StringifierTest extends FunSuite {
 
   test("work for string wrapper"){
     case class WS(value: String)
-    implicit val S = Stringifier[String].xmap(WS)(_.value)
+    implicit val S = Stringifier(WS)(_.value)
     val WS1 = WS("1")
 
     val ok = Stringifier.decode[WS](Stringifier.encode(WS1))
@@ -21,7 +21,7 @@ class StringifierTest extends FunSuite {
 
   test("work for int wrapper"){
     case class WI(value: Int)
-    implicit val S = Stringifier[Int].xmap(WI)(_.value)
+    implicit val S = Stringifier(WI)(_.value)
     val W1 = WI(1)
 
     val ok = Stringifier.decode[WI](Stringifier.encode(W1))
@@ -33,7 +33,7 @@ class StringifierTest extends FunSuite {
 
   test("work for restricted values"){
     case class WR(value: Char)
-    implicit val S = Stringifier[Char].xmap(WR)(_.value).restricted(Set('a', 'b', 'c').map(WR))
+    implicit val S = Stringifier(WR)(_.value).restricted(Set('a', 'b', 'c').map(WR))
     val W1   = WR('a')
     val ok   = Stringifier.decode[WR](Stringifier.encode(W1))
     val fail = Stringifier.decode[WR]("1")
@@ -43,7 +43,7 @@ class StringifierTest extends FunSuite {
 
   test("combinators work"){
     type T = Either[Int, Int]
-    implicit val S = Stringifier[Int].optional.xmap[T](oi => oi.filter(_ < 42).toRight[Int](42))(_.fold(Some.apply, _ => None))
+    implicit val S = Stringifier.SInt.optional.xmap[T](oi => oi.filter(_ < 42).toRight[Int](42))(_.fold(Some.apply, _ => None))
 
     val res0  = Stringifier.decode[T]("41")
     val res1  = Stringifier.decode[T]("42")
@@ -62,7 +62,7 @@ class StringifierTest extends FunSuite {
     case class EvenInt(value: Int){
       require(value % 2 == 0)
     }
-    implicit val S = Stringifier[Int].xmap(EvenInt)(_.value)
+    implicit val S = Stringifier(EvenInt)(_.value)
 
     val res1 = Stringifier.decode[EvenInt]("1")
     val res2 = Stringifier.decode[EvenInt]("2")
