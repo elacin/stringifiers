@@ -5,134 +5,73 @@ import java.util.UUID
 
 import scala.language.implicitConversions
 import scala.reflect.ClassTag
-import scala.util.{Failure, Success, Try}
 
-sealed trait Stringifier[E] {
+trait Stringifier[E] {
+  /* Meant as a rendering hint */
   val format: Format
-  val typename: String
+
+  /* The name of type E, as determined by Class.simpleName */
+  val typename: Typename
+
+  /* If E is some sort of Enum type, we can provide
+      better rendering and error messages by populating this */
   val restrictedValues: Option[Set[E]]
+
+  /* It's often unwanted to include a value of type <: `Throwable`
+      in data objects (like `DecodeFail`), so we let users specify
+      which part of the exception data they want to see propagate */
+  val throwableFormatter: ThrowableFormatter
+
   def encode(e: E): String
-  def decode(str: String): Either[Failed, E]
+
+  def decode(str: String): Either[DecodeFail, E]
 }
 
-private final class SimpleStringifier[E: ClassTag](
-  override val typename:  String,
-  override val format:    Format,
-               rawDecode: String => E,
-               rawEncode: E => String) extends Stringifier[E] {
-
-  override val restrictedValues = None
-
-  def encode(e: E) = rawEncode(e)
-
-  def decode(str: String): Either[Failed, E] = {
-    val trimmed = str.trim
-    Try(rawDecode(trimmed)) match {
-      case Success(e)  => Right(e)
-      case Failure(th) => Left(FailedParsing(str, typename, th))
-    }
-  }
-}
-
-private final class RestrictedStringifier[E](
-  E: Stringifier[E], restricted: Set[E]) extends Stringifier[E] {
-
-  override val format           = Format.Enum
-  override val typename         = E.typename
-  override val restrictedValues = Some(restricted)
-
-  val restrictedMap: Map[String, E] =
-    (restricted foldLeft Map.empty[String, E]){
-      case (map, e) => map + ((E encode e) -> e)
-    }
-
-  val restrictedStrings = restricted map E.encode
-
-  override def decode(str: String) =
-    restrictedMap get str toRight FailedNotInSet(str, typename, restrictedStrings)
-
-  override def encode(e: E): String =
-    E encode e
-}
-
-private final class OptionStringifier[E](E: Stringifier[E]) extends Stringifier[Option[E]] {
-  override val format           = E.format
-  override val typename         = s"Option[${E.typename}"
-  override val restrictedValues = E.restrictedValues map (_ map Option.apply)
-
-  override def decode(str: String) =
-    Some(str.trim) filter (_.nonEmpty) match {
-      case Some(value) => (E decode value).right map Some.apply
-      case _           => Right(None)
-    }
-
-  override def encode(oe: Option[E]): String =
-    oe map E.encode getOrElse ""
-}
-
-private final class ConvertingStringifier[E, F: ClassTag](
-  val typename: String, E: Stringifier[E], to: E => F, from: F => E) extends Stringifier[F] {
-
-  override val restrictedValues = E.restrictedValues map (_ map to)
-  override val format           = E.format
-
-  override def decode(str: String) =
-    (E decode str).right flatMap {
-      e => Try(to(e)) match {
-        case Success(f)  => Right(f)
-        case Failure(th) => Left(FailedParsing(str, typename, th))
-      }
-    }
-
-  override def encode(f: F): String =
-    E encode from(f)
-}
-
-final class StringifierOps[E](val E: Stringifier[E]) extends AnyVal {
-  def xmap[F: ClassTag](to: E ⇒ F)(from: F ⇒ E): Stringifier[F] =
-    new ConvertingStringifier[E, F](Stringifier.typeName[F], E, to, from)
+final class StringifierOps[E](val S: Stringifier[E]) extends AnyVal {
+  def xmap[F: ClassTag](to: E ⇒ F)(from: F ⇒ E, throwableFormatter: ThrowableFormatter = S.throwableFormatter): Stringifier[F] =
+    new StringifierConverting[E, F](typeName[F], throwableFormatter, S, toTryF(to), from)
 
   def restricted(es: Set[E]): Stringifier[E] =
-    new RestrictedStringifier[E](E, es)
+    new StringifierRestricted[E](S, es)
 
   def optional: Stringifier[Option[E]] =
-    new OptionStringifier(E)
+    new StringifierOption(S)
 }
 
-object Stringifier{
-  def typeName[E: ClassTag] =
-    implicitly[ClassTag[E]].runtimeClass.getSimpleName
+object Stringifier {
+  def apply[E: Stringifier]: Stringifier[E] =
+    implicitly
 
-  val nonEmpty: String ⇒ String = _.ensuring(_.nonEmpty)
+  def encode[E: Stringifier](e: E): String =
+    apply[E] encode e
 
-  def encode[E](e: E)(implicit E: Stringifier[E]): String =
-    E.encode(e)
+  def decode[E: Stringifier](s: String): Either[DecodeFail, E] =
+    apply[E] decode s
 
-  def decode[E](s: String)(implicit E: Stringifier[E]): Either[Failed, E] =
-    E.decode(s)
+  def instance[E: ClassTag](decode:    String ⇒ E)
+                           (encode:    E      ⇒ String,
+                            format:    Format             = Format.Text,
+                            formatter: ThrowableFormatter = ThrowableFormatter.ClassAndMessage): Stringifier[E] =
+    new StringifierSimple[E](typeName[E], format, formatter, toTryF(decode), encode)
 
-  def apply[E: ClassTag](_decode:  String ⇒ E, format: Format = Format.Text)
-                        (_encode:  E      ⇒ String): Stringifier[E] =
-    new SimpleStringifier[E](typeName[E], format, _decode, _encode)
+  def derive[E: Stringifier, F: ClassTag](to: E ⇒ F)(from: F ⇒ E): Stringifier[F] =
+    (apply[E] xmap to)(from)
 
-  def apply[E, F: ClassTag](to: E ⇒ F)(from: F ⇒ E)(implicit E: Stringifier[E]): Stringifier[F] =
-    new ConvertingStringifier[E, F](typeName[F], E, to, from)
-
-  implicit def optionStringifier[E](implicit E: Stringifier[E]): Stringifier[Option[E]] =
-    new OptionStringifier(E)
+  implicit def optionStringifier[E: Stringifier]: Stringifier[Option[E]] =
+    new StringifierOption(implicitly)
 
   implicit def stringifierOps[E](c: Stringifier[E]): StringifierOps[E] =
     new StringifierOps(c)
 
-  implicit val SUnit    = apply[Unit   ](_ => (),         Format.Unit)   (_ => "()")
-  implicit val SByte    = apply[Byte   ](_.toByte,        Format.Int)    (_.toString)
-  implicit val SBoolean = apply[Boolean](_.toBoolean,     Format.Boolean)(_.toString)
-  implicit val SChar    = apply[Char]   (_.apply(0),      Format.Text)   (_.toString)
-  implicit val SFloat   = apply[Float]  (_.toFloat,       Format.Float)  (_.toString)
-  implicit val SDouble  = apply[Double] (_.toDouble,      Format.Float)  (_.toString)
-  implicit val SInt     = apply[Int]    (_.toInt,         Format.Int)    (_.toString)
-  implicit val SLong    = apply[Long]   (_.toLong,        Format.Int)    (_.toString)
-  implicit val SString  = apply[String] (nonEmpty,        Format.Text)   (identity)
-  implicit val SUUID    = apply[UUID]   (UUID.fromString, Format.Uuid)   (_.toString)
-  implicit val SURI     = apply[URI]    (URI.create,      Format.Uri)    (_.toString)
+  implicit val SUnit    = instance[Unit   ](_ => ()        )(_ => "()",  Format.Unit,    ThrowableFormatter.ClassAndMessage)
+  implicit val SByte    = instance[Byte   ](_.toByte       )(_.toString, Format.Int,     ThrowableFormatter.ClassAndMessage)
+  implicit val SBoolean = instance[Boolean](_.toBoolean    )(_.toString, Format.Boolean, ThrowableFormatter.ClassAndMessage)
+  implicit val SChar    = instance[Char]   (_.apply(0)     )(_.toString, Format.Text,    ThrowableFormatter.ClassAndMessage)
+  implicit val SFloat   = instance[Float]  (_.toFloat      )(_.toString, Format.Float,   ThrowableFormatter.ClassAndMessage)
+  implicit val SDouble  = instance[Double] (_.toDouble     )(_.toString, Format.Float,   ThrowableFormatter.ClassAndMessage)
+  implicit val SInt     = instance[Int]    (_.toInt        )(_.toString, Format.Int,     ThrowableFormatter.ClassAndMessage)
+  implicit val SLong    = instance[Long]   (_.toLong       )(_.toString, Format.Int,     ThrowableFormatter.ClassAndMessage)
+  implicit val SString  = instance[String] (nonEmpty       )(identity,   Format.Text,    ThrowableFormatter.ClassAndMessage)
+  implicit val SUUID    = instance[UUID]   (UUID.fromString)(_.toString, Format.Uuid,    ThrowableFormatter.ClassAndMessage)
+  implicit val SURI     = instance[URI]    (URI.create     )(_.toString, Format.Uri,     ThrowableFormatter.ClassAndMessage)
 }
