@@ -78,11 +78,11 @@ object Stringifier {
     formatter:     ThrowableFormatter = ThrowableFormatter.ClassAndMessage,
     enumValuesOpt: Option[Set[E]]     = None): Stringifier[E] =
 
-    Stringifier[E](toTryF(decode), encode, typeName[E], format, formatter, None)
+    Stringifier[E](toTryF(decode), encode, Typename[E], format, formatter, None)
 
   /**
-    * Derive an instance of a `Stringifier` for F based on an
-    *  existing instance for E
+    * Derive an instance of a `Stringifier` for `F` based on an
+    *  existing instance for `E`
     */
   def xmap[E: Stringifier, F: ClassTag](to: E ⇒ F)(from: F ⇒ E): Stringifier[F] = {
     val S = implicitly[Stringifier[E]]
@@ -90,7 +90,7 @@ object Stringifier {
     new Stringifier[F](
       str => S decodeT str flatMap toTryF(to),
       from andThen S.encode,
-      typeName[F],
+      Typename[F],
       S.format,
       S.throwableFormatter,
       S.enumValuesOpt map (_ map toTryF(to) collect { case Success(s) => s })
@@ -119,11 +119,11 @@ object Stringifier {
     )
   }
 
-  /* automatically upgrade to optional stringifier */
+  /* automatically upgrade to `Stringifier[E]` to `Stringifier[Option[E]]` */
   implicit def optionStringifier[E: Stringifier]: Stringifier[Option[E]] =
     toOpt(implicitly)
 
-  /* Provide syntax for xmap */
+  /* Provide syntax for `xmap` */
   implicit def stringifierOps[E](c: Stringifier[E]): StringifierOps[E] =
     new StringifierOps(c)
 

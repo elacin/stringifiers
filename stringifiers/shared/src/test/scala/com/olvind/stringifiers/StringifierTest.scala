@@ -1,18 +1,19 @@
 package com.olvind.stringifiers
 
-import org.scalatest.{Matchers, FunSuite}
+import org.scalatest.{FunSuite, Matchers}
 
 class StringifierTest extends FunSuite with Matchers {
 
-  def assertLeft[E](res: Either[DecodeFail, E]) =
-    assertResult(true, res)(res.isLeft)
-
   case class WS(value: String)
+  case class WI(value: Int)
+  case class WC(value: Char)
+  case class EvenInt(value: Int){
+    require(value % 2 == 0)
+  }
 
   test("work for string wrapper"){
 
-    implicit val S = Stringifier[String].xmap(WS)(_.value)
-    println(S.typename)
+    implicit val S: Stringifier[WS] = Stringifier[String].xmap(WS)(_.value)
     val WS1 = WS("1")
 
     val ok = Stringifier.decode[WS](Stringifier.encode(WS1))
@@ -20,58 +21,55 @@ class StringifierTest extends FunSuite with Matchers {
 
     assertResult(Right(WS1), WS1)(ok)
     fail should be (Left(ValueNotValid("", Typename("WS"), Some("AssertionError: assertion failed"))))
-    assertLeft(fail)
   }
 
   test("work for int wrapper"){
-    case class WI(value: Int)
-    implicit val S = Stringifier.xmap(WI)(_.value)
+    implicit val S: Stringifier[WI] = Stringifier.xmap(WI)(_.value)
     val W1 = WI(1)
 
     val ok = Stringifier.decode[WI](Stringifier.encode(W1))
     val fail = Stringifier.decode[WI]("a")
 
-    assertLeft(fail)
+    fail should be (Left(ValueNotValid("a", Typename("WI"), Some("NumberFormatException: For input string: \"a\""))))
     assertResult(Right(W1), W1)(ok)
   }
 
+  test("work for int wrapper with enums"){
+    implicit val S: Stringifier[WI] = Stringifier.xmap(WI)(_.value).withEnumValues(Set(1,2,3) map WI)
+    Stringifier.decode[WI]("1") should be (Right(WI(1)))
+    Stringifier.decode[WI]("0") should be (Left(ValueNotInSet("0",Typename("WI"),Set("1", "2", "3"))))
+  }
+
   test("work for restricted values"){
-    case class WR(value: Char)
-    implicit val S = Stringifier.xmap(WR)(_.value).withEnumValues(Set('a', 'b', 'c').map(WR))
-    val W1   = WR('a')
-    val ok   = Stringifier.decode[WR](Stringifier.encode(W1))
-    val fail = Stringifier.decode[WR]("1")
-    assertResult(Right(W1), W1)(ok)
-    assertLeft(fail)
+    val S: Stringifier[WC] =
+      Stringifier
+        .xmap(WC)(_.value)
+        .withEnumValues(Set('a', 'b', 'c') map WC)
+
+    val W1 = WC('a')
+    S.decode(S.encode(W1)) should be(Right(W1))
+    S.decode("1") should be(Left(ValueNotInSet("1", Typename("WC"), Set("a", "b", "c"))))
   }
 
   test("combinators work"){
     type T = Either[Int, Int]
-    implicit val S = Stringifier[Int].optional.xmap[T](oi => oi.filter(_ < 42).toRight[Int](42))(_.fold(Some.apply, _ => None))
+    val S: Stringifier[T] =
+      Stringifier[Int]
+      .optional
+      .xmap[T](oi => (oi filter (_ < 42)).toRight(42))(_.fold(Some.apply, _ => None))
 
-    val res0  = Stringifier.decode[T]("41")
-    val res1  = Stringifier.decode[T]("42")
-    val res2  = Stringifier.decode[T]("")
-    val res3  = Stringifier.decode[T]("43")
-    val fail1 = Stringifier.decode[T]("a")
-
-    assertResult(Right(Right(41)))(res0)
-    assertResult(Right(Left(42)))(res1)
-    assertResult(Right(Left(42)))(res2)
-    assertResult(Right(Left(42)))(res3)
-    assertLeft(fail1)
+    S.decode("41") should be (Right(Right(41)))
+    S.decode("42") should be (Right(Left(42)))
+    S.decode("")   should be (Right(Left(42)))
+    S.decode("43") should be (Right(Left(42)))
+    S.decode("a")  should be (Left(ValueNotValid("a",Typename("Either"),Some("NumberFormatException: For input string: \"a\""))))
   }
 
   test("evenInt"){
-    case class EvenInt(value: Int){
-      require(value % 2 == 0)
-    }
-    implicit val S = Stringifier.xmap(EvenInt)(_.value)
+    val S: Stringifier[EvenInt] =
+      Stringifier.xmap(EvenInt)(_.value)
 
-    val res1 = Stringifier.decode[EvenInt]("1")
-    val res2 = Stringifier.decode[EvenInt]("2")
-
-    assertLeft(res1)
-    assertResult(Right(EvenInt(2)))(res2)
+    S.decode("1") should be (Left(ValueNotValid("1",Typename("EvenInt"),Some("IllegalArgumentException: requirement failed"))))
+    S.decode("2") should be (Right(EvenInt(2)))
   }
 }
