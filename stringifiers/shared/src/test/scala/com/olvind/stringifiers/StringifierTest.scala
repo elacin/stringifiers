@@ -12,15 +12,11 @@ class StringifierTest extends FunSuite with Matchers {
   }
 
   test("work for string wrapper"){
-
     implicit val S: Stringifier[WS] = Stringifier[String].xmap(WS)(_.value)
-    val WS1 = WS("1")
+    val value = WS("1")
 
-    val ok = Stringifier.decode[WS](Stringifier.encode(WS1))
-    val fail = Stringifier.decode[WS]("")
-
-    assertResult(Right(WS1), WS1)(ok)
-    fail should be (Left(ValueNotValid("", Typename("WS"), Some("AssertionError: assertion failed"))))
+    S.decode(Stringifier.encode(value)) should be (Right(value))
+    S.decode("") should be (Left(ValueNotValid("", Typename("WS"), Some("AssertionError: assertion failed"))))
   }
 
   test("work for int wrapper"){

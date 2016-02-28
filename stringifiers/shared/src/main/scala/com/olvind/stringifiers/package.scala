@@ -1,6 +1,5 @@
 package com.olvind
 
-import scala.reflect.ClassTag
 import scala.util.Try
 
 package object stringifiers {
