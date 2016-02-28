@@ -5,40 +5,60 @@ import java.util.UUID
 
 import scala.language.implicitConversions
 import scala.reflect.ClassTag
+import scala.util.{Try, Failure, Success}
 
-trait Stringifier[E] {
-  /* Meant as a rendering hint */
-  val format: Format
-
+final case class Stringifier[E](
+  decodeT:            String => Try[E],
+  encode:             E => String,
   /* The name of type E, as determined by Class.simpleName */
-  val typename: Typename
-
-  /* If E is some sort of Enum type, we can provide
-      better rendering and error messages by populating this */
-  val enumValues: Option[Set[E]]
-
+  typename:           Typename,
+  /* Meant as a rendering hint */
+  format:             Format,
   /* It's often unwanted to include a value of type <: `Throwable`
       in data objects (like `DecodeFail`), so we let users specify
-      which part of the exception data they want to see propagate */
-  val throwableFormatter: ThrowableFormatter
+      which part of the exception data they want to see propagate
+   */
+  throwableFormatter: ThrowableFormatter,
+  /* If E is some sort of Enum type, we can provide
+      better rendering and error messages by populating this */
+  enumValuesOpt:      Option[Set[E]]) {
 
-  def encode(e: E): String
+  def decode(str: String): Either[DecodeFail, E] =
+    decodeT(str) match {
+      case Success(e)  =>
+        enumValuesOpt match {
+          case Some(enumValues) if !enumValues(e) =>
+            Left(ValueNotInSet(str, typename, enumValues map encode))
+          case _ =>
+            Right(e)
+        }
+      case Failure(th) =>
+        Left(ValueNotValid(str, typename, throwableFormatter(th)))
+    }
 
-  def decode(str: String): Either[DecodeFail, E]
+  def withFormat(f: Format): Stringifier[E] =
+    copy(format = f)
+
+  def withThrowableFormatter(tf: ThrowableFormatter): Stringifier[E] =
+    copy(throwableFormatter = tf)
+
+  def withTypename(t: Typename): Stringifier[E] =
+    copy(typename = t)
+
+  def withEnumValues(vs: Set[E]) =
+    copy(enumValuesOpt = Some(vs))
 }
 
 final class StringifierOps[E](val S: Stringifier[E]) extends AnyVal {
-  def xmap[F: ClassTag](to: E ⇒ F)(from: F ⇒ E, throwableFormatter: ThrowableFormatter = S.throwableFormatter): Stringifier[F] =
-    new StringifierConverting[E, F](typeName[F], throwableFormatter, S, toTryF(to), from)
-
-  def enumValues(es: Set[E]): Stringifier[E] =
-    new StringifierEnum[E](S, es)
+  def xmap[F: ClassTag](to: E ⇒ F)(from: F ⇒ E): Stringifier[F] =
+    Stringifier.xmap[E, F](to)(from)(S, implicitly)
 
   def optional: Stringifier[Option[E]] =
-    new StringifierOption(S)
+    Stringifier.toOpt(S)
 }
 
 object Stringifier {
+  /* summon an instance of `Stringifier[E]` */
   def apply[E: Stringifier]: Stringifier[E] =
     implicitly
 
@@ -48,21 +68,68 @@ object Stringifier {
   def decode[E: Stringifier](s: String): Either[DecodeFail, E] =
     apply[E] decode s
 
-  def instance[E: ClassTag](decode:    String ⇒ E)
-                           (encode:    E      ⇒ String,
-                            format:    Format             = Format.Text,
-                            formatter: ThrowableFormatter = ThrowableFormatter.ClassAndMessage): Stringifier[E] =
-    new StringifierSimple[E](typeName[E], format, formatter, toTryF(decode), encode)
+  /**
+    * Define an instance of a `Stringifier` from scratch
+    */
+  def instance[E: ClassTag](
+    decode:        String ⇒ E)
+   (encode:        E      ⇒ String,
+    format:        Format             = Format.Text,
+    formatter:     ThrowableFormatter = ThrowableFormatter.ClassAndMessage,
+    enumValuesOpt: Option[Set[E]]     = None): Stringifier[E] =
 
-  def derive[E: Stringifier, F: ClassTag](to: E ⇒ F)(from: F ⇒ E): Stringifier[F] =
-    (apply[E] xmap to)(from)
+    Stringifier[E](toTryF(decode), encode, typeName[E], format, formatter, None)
 
+  /**
+    * Derive an instance of a `Stringifier` for F based on an
+    *  existing instance for E
+    */
+  def xmap[E: Stringifier, F: ClassTag](to: E ⇒ F)(from: F ⇒ E): Stringifier[F] = {
+    val S = implicitly[Stringifier[E]]
+
+    new Stringifier[F](
+      str => S decodeT str flatMap toTryF(to),
+      from andThen S.encode,
+      typeName[F],
+      S.format,
+      S.throwableFormatter,
+      S.enumValuesOpt map (_ map toTryF(to) collect { case Success(s) => s })
+    )
+  }
+
+  /**
+    * Derive an instance of a `Stringifier[Option[E]]` based on an
+    *  existing instance of `Stringifier[E]`
+    */
+  def toOpt[E](S: Stringifier[E]): Stringifier[Option[E]] = {
+    val decodeOpt: String => Try[Option[E]] =
+      str =>
+        Option(str) filter (_.nonEmpty) match {
+          case Some(value) => S.decodeT(value) map Some.apply
+          case _           => Success(None)
+        }
+
+    new Stringifier[Option[E]](
+      decodeOpt,
+      oe => oe map S.encode getOrElse "",
+      S.typename,
+      S.format,
+      S.throwableFormatter,
+      S.enumValuesOpt map (_ map Some.apply)
+    )
+  }
+
+  /* automatically upgrade to optional stringifier */
   implicit def optionStringifier[E: Stringifier]: Stringifier[Option[E]] =
-    new StringifierOption(implicitly)
+    toOpt(implicitly)
 
+  /* Provide syntax for xmap */
   implicit def stringifierOps[E](c: Stringifier[E]): StringifierOps[E] =
     new StringifierOps(c)
 
+  /**
+    * Built-in instances
+    */
   implicit val SUnit    = instance[Unit   ](_ => ()        )(_ => "()",  Format.Unit,    ThrowableFormatter.ClassAndMessage)
   implicit val SByte    = instance[Byte   ](_.toByte       )(_.toString, Format.Int,     ThrowableFormatter.ClassAndMessage)
   implicit val SBoolean = instance[Boolean](_.toBoolean    )(_.toString, Format.Boolean, ThrowableFormatter.ClassAndMessage)

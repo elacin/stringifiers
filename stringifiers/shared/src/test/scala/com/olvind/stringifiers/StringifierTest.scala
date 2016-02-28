@@ -1,27 +1,31 @@
 package com.olvind.stringifiers
 
-import org.scalatest.FunSuite
+import org.scalatest.{Matchers, FunSuite}
 
-class StringifierTest extends FunSuite {
+class StringifierTest extends FunSuite with Matchers {
 
   def assertLeft[E](res: Either[DecodeFail, E]) =
     assertResult(true, res)(res.isLeft)
 
+  case class WS(value: String)
+
   test("work for string wrapper"){
-    case class WS(value: String)
+
     implicit val S = Stringifier[String].xmap(WS)(_.value)
+    println(S.typename)
     val WS1 = WS("1")
 
     val ok = Stringifier.decode[WS](Stringifier.encode(WS1))
     val fail = Stringifier.decode[WS]("")
 
     assertResult(Right(WS1), WS1)(ok)
+    fail should be (Left(ValueNotValid("", Typename("WS"), Some("AssertionError: assertion failed"))))
     assertLeft(fail)
   }
 
   test("work for int wrapper"){
     case class WI(value: Int)
-    implicit val S = Stringifier.derive(WI)(_.value)
+    implicit val S = Stringifier.xmap(WI)(_.value)
     val W1 = WI(1)
 
     val ok = Stringifier.decode[WI](Stringifier.encode(W1))
@@ -33,7 +37,7 @@ class StringifierTest extends FunSuite {
 
   test("work for restricted values"){
     case class WR(value: Char)
-    implicit val S = Stringifier.derive(WR)(_.value).restricted(Set('a', 'b', 'c').map(WR))
+    implicit val S = Stringifier.xmap(WR)(_.value).withEnumValues(Set('a', 'b', 'c').map(WR))
     val W1   = WR('a')
     val ok   = Stringifier.decode[WR](Stringifier.encode(W1))
     val fail = Stringifier.decode[WR]("1")
@@ -62,7 +66,7 @@ class StringifierTest extends FunSuite {
     case class EvenInt(value: Int){
       require(value % 2 == 0)
     }
-    implicit val S = Stringifier.derive(EvenInt)(_.value)
+    implicit val S = Stringifier.xmap(EvenInt)(_.value)
 
     val res1 = Stringifier.decode[EvenInt]("1")
     val res2 = Stringifier.decode[EvenInt]("2")
