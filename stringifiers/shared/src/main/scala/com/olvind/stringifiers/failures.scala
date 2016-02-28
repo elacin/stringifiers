@@ -12,7 +12,7 @@ case class ValueNotValid(
 ) extends DecodeFail
 
 case class ValueNotInSet(
-  value:          String,
-  typename:       Typename,
-  restrictedKeys: Set[String]
+  value:    String,
+  typename: Typename,
+  enumKeys: Set[String]
 ) extends DecodeFail

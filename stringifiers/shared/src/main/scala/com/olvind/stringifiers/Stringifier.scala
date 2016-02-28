@@ -15,7 +15,7 @@ trait Stringifier[E] {
 
   /* If E is some sort of Enum type, we can provide
       better rendering and error messages by populating this */
-  val restrictedValues: Option[Set[E]]
+  val enumValues: Option[Set[E]]
 
   /* It's often unwanted to include a value of type <: `Throwable`
       in data objects (like `DecodeFail`), so we let users specify
@@ -31,8 +31,8 @@ final class StringifierOps[E](val S: Stringifier[E]) extends AnyVal {
   def xmap[F: ClassTag](to: E ⇒ F)(from: F ⇒ E, throwableFormatter: ThrowableFormatter = S.throwableFormatter): Stringifier[F] =
     new StringifierConverting[E, F](typeName[F], throwableFormatter, S, toTryF(to), from)
 
-  def restricted(es: Set[E]): Stringifier[E] =
-    new StringifierRestricted[E](S, es)
+  def enumValues(es: Set[E]): Stringifier[E] =
+    new StringifierEnum[E](S, es)
 
   def optional: Stringifier[Option[E]] =
     new StringifierOption(S)

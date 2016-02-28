@@ -10,8 +10,8 @@ private[stringifiers] final class StringifierConverting[E, F: ClassTag](
                to:                 E => Try[F],
                from:               F => E) extends Stringifier[F] {
 
-  override val restrictedValues: Option[Set[F]] =
-    wrapped.restrictedValues map (_ map to collect { case Success(s) => s })
+  override val enumValues: Option[Set[F]] =
+    wrapped.enumValues map (_ map to collect { case Success(s) => s })
 
   override val format: Format =
     wrapped.format

@@ -10,7 +10,7 @@ private[stringifiers] final class StringifierSimple[E: ClassTag](
                _decode:            String => Try[E],
                _encode:            E => String) extends Stringifier[E] {
 
-  override val restrictedValues: Option[Set[E]] =
+  override val enumValues: Option[Set[E]] =
     None
 
   def encode(e: E): String =

@@ -12,8 +12,8 @@ private[stringifiers] final class StringifierOption[E](
   override val typename: Typename =
     Typename(s"Option[${wrapped.typename.value}]")
 
-  override val restrictedValues: Option[Set[Option[E]]] =
-    wrapped.restrictedValues map (_ map Option.apply)
+  override val enumValues: Option[Set[Option[E]]] =
+    wrapped.enumValues map (_ map Option.apply)
 
   override def decode(str: String): Either[DecodeFail, Option[E]] =
     Option(str) filter (_.nonEmpty) match {
