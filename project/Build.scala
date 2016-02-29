@@ -16,8 +16,8 @@ object Build extends sbt.Build {
     homepage           := Some(url("http://github.com/oyvindberg/stringifiers"))
   )
 
-  val doPublish: PE =
-    _.settings(
+  val doPublish =
+    Seq(
       releaseCrossBuild             := true,
       releasePublishArtifactsAction := PgpKeys.publishSigned.value,
       pomIncludeRepository          := { x => false },
@@ -93,6 +93,7 @@ object Build extends sbt.Build {
   ))
 
   val stringifiers = crossProject.in(file("stringifiers"))
+    .settings(doPublish :_*)
     .settings(mavenCentralFrouFrou :_*)
     .settings(
       name                 := "stringifiers",
