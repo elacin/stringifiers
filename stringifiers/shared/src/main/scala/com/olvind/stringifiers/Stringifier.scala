@@ -48,10 +48,10 @@ final case class Stringifier[E](
 
 final class StringifierOps[E](val S: Stringifier[E]) extends AnyVal {
   def xmap[F: ClassTag](to: E ⇒ F)(from: F ⇒ E): Stringifier[F] =
-    Stringifier.xmap[E, F](to)(from)(S, implicitly)
+    Stringifier.instance[E, F](to)(from)(S, implicitly)
 
   def optional: Stringifier[Option[E]] =
-    Stringifier toOpt S
+    Stringifier optional S
 }
 
 object Stringifier {
@@ -66,31 +66,30 @@ object Stringifier {
     apply[E] decode s
 
   /**
-    * Define an instance of a `Stringifier` from scratch
-    */
-  def instance[E: ClassTag](
-    decode:        String ⇒ E)
-   (encode:        E      ⇒ String,
-    hint:          RenderHint         = RenderHint.Text,
-    formatter:     ThrowableFormatter = ThrowableFormatter.ClassAndMessage,
-    enumValuesOpt: Option[Set[E]]     = None): Stringifier[E] =
-
-    Stringifier[E](toTryF(decode), encode, Typename[E], hint, formatter, None)
-
-  /**
     * Derive an instance of a `Stringifier` for `F` based on an
     *  existing instance for `E`
     */
-  def xmap[E: Stringifier, F: ClassTag](to: E ⇒ F)(from: F ⇒ E): Stringifier[F] = {
-    val S = implicitly[Stringifier[E]]
+  def instance[E: Stringifier, F: ClassTag](
+                to:            E ⇒ F)
+               (from:          F ⇒ E,
+                hint:          RenderHint         = null,
+                formatter:     ThrowableFormatter = null,
+                enumValuesOpt: Option[Set[F]]     = null): Stringifier[F] = {
+
+    val S = Stringifier[E]
+
+    def ifProvided[T](t1: T)(t2: T): T =
+      if (t1 != null) t1 else t2
 
     new Stringifier[F](
       str => S decodeT str flatMap toTryF(to),
       from andThen S.encode,
       Typename[F],
-      S.renderHint,
-      S.throwableFormatter,
-      S.enumValuesOpt map (_ map toTryF(to) collect { case Success(s) => s })
+      ifProvided(hint)(S.renderHint),
+      ifProvided(formatter)(S.throwableFormatter),
+      ifProvided(enumValuesOpt)(
+        S.enumValuesOpt map (_ map toTryF(to) collect { case Success(s) => s })
+      )
     )
   }
 
@@ -98,7 +97,7 @@ object Stringifier {
     * Derive an instance of a `Stringifier[Option[E]]` based on an
     *  existing instance of `Stringifier[E]`
     */
-  def toOpt[E](S: Stringifier[E]): Stringifier[Option[E]] = {
+  def optional[E](S: Stringifier[E]): Stringifier[Option[E]] = {
     val decodeOpt: String => Try[Option[E]] =
       str =>
         Option(str) filter (_.nonEmpty) match {
@@ -118,7 +117,7 @@ object Stringifier {
 
   /* automatically upgrade to `Stringifier[E]` to `Stringifier[Option[E]]` */
   implicit def optionStringifier[E: Stringifier]: Stringifier[Option[E]] =
-    toOpt(implicitly)
+    optional(implicitly)
 
   /* Provide syntax for `xmap` */
   implicit def stringifierOps[E](c: Stringifier[E]): StringifierOps[E] =
@@ -127,15 +126,15 @@ object Stringifier {
   /**
     * Built-in instances
     */
-  implicit val SUnit    = instance[Unit   ](_ => ()        )(_ => "()",  RenderHint.Unit,    ThrowableFormatter.ClassAndMessage)
-  implicit val SByte    = instance[Byte   ](_.toByte       )(_.toString, RenderHint.Int,     ThrowableFormatter.ClassAndMessage)
-  implicit val SBoolean = instance[Boolean](_.toBoolean    )(_.toString, RenderHint.Boolean, ThrowableFormatter.ClassAndMessage)
-  implicit val SChar    = instance[Char]   (_.apply(0)     )(_.toString, RenderHint.Text,    ThrowableFormatter.ClassAndMessage)
-  implicit val SFloat   = instance[Float]  (_.toFloat      )(_.toString, RenderHint.Float,   ThrowableFormatter.ClassAndMessage)
-  implicit val SDouble  = instance[Double] (_.toDouble     )(_.toString, RenderHint.Float,   ThrowableFormatter.ClassAndMessage)
-  implicit val SInt     = instance[Int]    (_.toInt        )(_.toString, RenderHint.Int,     ThrowableFormatter.ClassAndMessage)
-  implicit val SLong    = instance[Long]   (_.toLong       )(_.toString, RenderHint.Int,     ThrowableFormatter.ClassAndMessage)
-  implicit val SString  = instance[String] (nonEmpty       )(identity,   RenderHint.Text,    ThrowableFormatter.ClassAndMessage)
-  implicit val SUUID    = instance[UUID]   (UUID.fromString)(_.toString, RenderHint.Uuid,    ThrowableFormatter.ClassAndMessage)
-  implicit val SURI     = instance[URI]    (URI.create     )(_.toString, RenderHint.Uri,     ThrowableFormatter.ClassAndMessage)
+  implicit val SString  = new Stringifier[String](toTryF(nonEmpty), identity[String], Typename[String], RenderHint.Text, ThrowableFormatter.ClassAndMessage, None)
+  implicit val SUnit    = instance[String, Unit   ](_ => ()        )(_ => "()",  RenderHint.Unit)
+  implicit val SByte    = instance[String, Byte   ](_.toByte       )(_.toString, RenderHint.Int)
+  implicit val SBoolean = instance[String, Boolean](_.toBoolean    )(_.toString, RenderHint.Boolean)
+  implicit val SChar    = instance[String, Char]   (_.apply(0)     )(_.toString, RenderHint.Text)
+  implicit val SFloat   = instance[String, Float]  (_.toFloat      )(_.toString, RenderHint.Float)
+  implicit val SDouble  = instance[String, Double] (_.toDouble     )(_.toString, RenderHint.Float)
+  implicit val SInt     = instance[String, Int]    (_.toInt        )(_.toString, RenderHint.Int)
+  implicit val SLong    = instance[String, Long]   (_.toLong       )(_.toString, RenderHint.Int)
+  implicit val SUUID    = instance[String, UUID]   (UUID.fromString)(_.toString, RenderHint.Uuid)
+  implicit val SURI     = instance[String, URI]    (URI.create     )(_.toString, RenderHint.Uri)
 }

@@ -20,7 +20,7 @@ class StringifierTest extends FunSuite with Matchers {
   }
 
   test("work for int wrapper"){
-    implicit val S: Stringifier[WI] = Stringifier.xmap(WI)(_.value)
+    implicit val S: Stringifier[WI] = Stringifier.instance(WI)(_.value)
     val W1 = WI(1)
 
     val ok = Stringifier.decode[WI](Stringifier.encode(W1))
@@ -31,7 +31,7 @@ class StringifierTest extends FunSuite with Matchers {
   }
 
   test("work for int wrapper with enums"){
-    implicit val S: Stringifier[WI] = Stringifier.xmap(WI)(_.value).withEnumValues(Set(1,2,3) map WI)
+    implicit val S: Stringifier[WI] = Stringifier.instance(WI)(_.value).withEnumValues(Set(1,2,3) map WI)
     Stringifier.decode[WI]("1") should be (Right(WI(1)))
     Stringifier.decode[WI]("0") should be (Left(ValueNotInSet("0",Typename("WI"),Set("1", "2", "3"))))
   }
@@ -39,7 +39,7 @@ class StringifierTest extends FunSuite with Matchers {
   test("work for restricted values"){
     val S: Stringifier[WC] =
       Stringifier
-        .xmap(WC)(_.value)
+        .instance(WC)(_.value)
         .withEnumValues(Set('a', 'b', 'c') map WC)
 
     val W1 = WC('a')
@@ -63,7 +63,7 @@ class StringifierTest extends FunSuite with Matchers {
 
   test("evenInt"){
     val S: Stringifier[EvenInt] =
-      Stringifier.xmap(EvenInt)(_.value)
+      Stringifier.instance(EvenInt)(_.value)
 
     S.decode("1") should be (Left(ValueNotValid("1",Typename("EvenInt"),Some("IllegalArgumentException: requirement failed"))))
     S.decode("2") should be (Right(EvenInt(2)))
