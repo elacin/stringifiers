@@ -73,21 +73,6 @@ object Build extends sbt.Build {
     case (false, _) ⇒ ""
   }
 
-  val preventPublication: PE =
-    _.settings(
-      publishTo := Some(Resolver.file("Unused transient repository", target.value / "fakepublish")),
-      publishArtifact := false,
-      publishLocalSigned := (),       // doesn't work
-      publishSigned := (),            // doesn't work
-      packagedArtifacts := Map.empty)
-
-  val hasNoTests: PE =
-    _.settings(
-      sbt.Keys.test in Test := (),
-      testOnly      in Test := (),
-      testQuick     in Test := ()
-    )
-
   val sharedDeps = Def.setting(Seq(
     "org.scalatest" %%% "scalatest" % "3.0.0-M15" % Test
   ))
@@ -108,6 +93,4 @@ object Build extends sbt.Build {
 
   val jvm = stringifiers.jvm
   val js  = stringifiers.js
-
-  val root = project.aggregate(jvm, js).configure(hasNoTests, preventPublication)
 }
