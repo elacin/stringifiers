@@ -102,6 +102,8 @@ object Build extends sbt.Build {
       manifestSetting
     ).jsSettings(
       scalacOptions       <+= sourceMapTransform
+    ).jvmSettings(
+      libraryDependencies ++= Seq("io.argonaut" %% "argonaut" % "6.1" % Test)
   )
 
   val jvm = stringifiers.jvm

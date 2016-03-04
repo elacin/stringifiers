@@ -56,3 +56,40 @@ And for Scala.js (not compiled for 2.10 because of a scaladoc issue)
 ```scala
 libraryDependencies += "com.olvind" %%% "stringifiers" % "0.1"
 ```
+
+# Type class instance derivation
+
+A lot of operations naturally work for `String`. By having defined a way to map back and forth, we
+ can provide loads of type class instances with just a few lines of glue code.
+
+So by providing these once:
+```scala
+object ArgonautSupport {
+  import scala.language.implicitConversions
+
+  implicit def toEncoder[T](implicit S: Stringifier[T]): EncodeJson[T] =
+    EncodeJson[T](S.encode andThen Argonaut.jString)
+
+  implicit def toDecoder[T](implicit S: Stringifier[T]): DecodeJson[T] =
+    DecodeJson[T](
+      c => c.as[String](DecodeJson.StringDecodeJson) map Stringifier[T].decode flatMap {
+        case Right(t) =>
+          DecodeResult ok t
+        case Left(ValueNotValid(v, t, oe)) =>
+          DecodeResult fail (s"«$v» is not a valid ${t.value}${oe.fold("")(": " + _)}", c.history)
+        case Left(ValueNotInSet(v, t, ss)) =>
+          DecodeResult fail (s"«$v» is not a valid ${t.value}. Not among ${ss.mkString("[«", "», «", "»]")}", c.history)
+      }
+    )
+}
+```
+
+You can have these implicits automagically:
+```scala
+  case class Secrets(value: Long)
+  implicit val S: Stringifier[Secrets] = (Stringifier instance Secrets)(_.value)
+
+  import Argonaut._, ArgonautSupport._
+  implicitly[EncodeJson[WrapChar]]
+  implicitly[DecodeJson[WrapChar]]
+```
