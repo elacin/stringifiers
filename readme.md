@@ -49,12 +49,12 @@ res0: Either[com.olvind.stringifiers.DecodeFail,Option[UserId]] = Right(None)
 
 Available for Scala 2.10/2.11:
 ```scala
-libraryDependencies += "com.olvind" %% "stringifiers" % "0.1"
+libraryDependencies += "com.olvind" %% "stringifiers" % "0.2"
 ```
 
 And for Scala.js (not compiled for 2.10 because of a scaladoc issue)
 ```scala
-libraryDependencies += "com.olvind" %%% "stringifiers" % "0.1"
+libraryDependencies += "com.olvind" %%% "stringifiers" % "0.2"
 ```
 
 # Type class instance derivation
