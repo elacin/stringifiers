@@ -72,7 +72,7 @@ object ArgonautSupport {
 
   implicit def toDecoder[T](implicit S: Stringifier[T]): DecodeJson[T] =
     DecodeJson[T](
-      c => c.as[String](DecodeJson.StringDecodeJson) map Stringifier[T].decode flatMap {
+      c => c.as[String](DecodeJson.StringDecodeJson) map S.decode flatMap {
         case Right(t) =>
           DecodeResult ok t
         case Left(ValueNotValid(v, t, oe)) =>
@@ -89,7 +89,8 @@ You can have these implicits automagically:
   case class Secrets(value: Long)
   implicit val S: Stringifier[Secrets] = (Stringifier instance Secrets)(_.value)
 
-  import Argonaut._, ArgonautSupport._
-  implicitly[EncodeJson[WrapChar]]
-  implicitly[DecodeJson[WrapChar]]
+  implicitly[EncodeJson[Secrets]]
+  implicitly[DecodeJson[Secrets]]
 ```
+
+That can naturally be extended to database mapping, rendering for web, etc

@@ -20,7 +20,7 @@ object ArgonautSupport {
 
   implicit def toDecoder[T](implicit S: Stringifier[T]): DecodeJson[T] =
     DecodeJson[T](
-      c => c.as[String](DecodeJson.StringDecodeJson) map Stringifier[T].decode flatMap {
+      c => c.as[String](DecodeJson.StringDecodeJson) map S.decode flatMap {
         case Right(t) =>
           DecodeResult ok t
         case Left(ValueNotValid(v, t, oe)) =>
@@ -67,11 +67,12 @@ class ArgonautSupportTest extends FunSuite with Matchers {
       -\/("«5» is not a valid Meh. Not among [«1», «3»]: []")
     )
   }
-  test("asdasd"){
+  test("secrets"){
     case class Secrets(value: Long)
     implicit val S: Stringifier[Secrets] = (Stringifier instance Secrets)(_.value)
-    implicitly[EncodeJson[WrapChar]]
-    implicitly[DecodeJson[WrapChar]]
+
+    implicitly[EncodeJson[Secrets]]
+    implicitly[DecodeJson[Secrets]]
   }
 }
 

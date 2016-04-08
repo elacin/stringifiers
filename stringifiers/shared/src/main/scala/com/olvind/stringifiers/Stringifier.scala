@@ -33,7 +33,7 @@ final case class Stringifier[E](
         Left(ValueNotValid(str, typename, throwableFormatter(th)))
     }
 
-  def withFormat(f: RenderHint): Stringifier[E] =
+  def withRenderHint(f: RenderHint): Stringifier[E] =
     copy(renderHint = f)
 
   def withThrowableFormatter(tf: ThrowableFormatter): Stringifier[E] =
