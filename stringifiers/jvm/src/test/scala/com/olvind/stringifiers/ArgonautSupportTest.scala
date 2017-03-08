@@ -3,8 +3,6 @@ package com.olvind.stringifiers
 import argonaut.{Argonaut, CodecJson, DecodeJson, DecodeResult, EncodeJson}
 import org.scalatest.{FunSuite, Matchers}
 
-import scalaz.-\/
-
 /**
   * This is an example of how `Stringifier` can be used to derive type class instances,
   *  in this case support for argonaut codecs.
@@ -40,8 +38,8 @@ class ArgonautSupportTest extends FunSuite with Matchers {
   case class MyClass(c: WrapChar, i: WrapOddInt, oi: Option[WrapOddInt])
 
   /* define Stringifiers for the two wrapper types WC and WI */
-  implicit val WCStringifier: Stringifier[WrapChar]   = (Stringifier instance WrapChar)(_.value)
-  implicit val WIStringifier: Stringifier[WrapOddInt] = (Stringifier instance WrapOddInt)(_.value)
+  implicit val WCStringifier: Stringifier[WrapChar]   = Stringifier.instance(WrapChar)(_.value)
+  implicit val WIStringifier: Stringifier[WrapOddInt] = Stringifier.instance(WrapOddInt)(_.value)
 
   import Argonaut._
   import ArgonautSupport._
@@ -55,21 +53,21 @@ class ArgonautSupportTest extends FunSuite with Matchers {
 
   test("Have reasonable error messages (normal)"){
     """"2"""".decodeEither[WrapOddInt] should be (
-      -\/("«2» is not a valid WrapOddInt: IllegalArgumentException: requirement failed: Only accepts odd values: []")
+      Left("«2» is not a valid WrapOddInt: IllegalArgumentException: requirement failed: Only accepts odd values: CursorHistory(List())")
     )
   }
 
   test("Have reasonable error messages (enum)"){
     case class Meh(value: Int)
-    implicit val S: Stringifier[Meh] = (Stringifier[Int] withEnumValues Set(1, 3) xmap Meh)(_.value)
+    implicit val S: Stringifier[Meh] = Stringifier[Int].withEnumValues(Set(1, 3)).xmap(Meh)(_.value)
 
     """"5"""".decodeEither[Meh] should be (
-      -\/("«5» is not a valid Meh. Not among [«1», «3»]: []")
+      Left("«5» is not a valid Meh. Not among [«1», «3»]: CursorHistory(List())")
     )
   }
   test("secrets"){
     case class Secrets(value: Long)
-    implicit val S: Stringifier[Secrets] = (Stringifier instance Secrets)(_.value)
+    implicit val S: Stringifier[Secrets] = Stringifier.instance(Secrets)(_.value)
 
     implicitly[EncodeJson[Secrets]]
     implicitly[DecodeJson[Secrets]]

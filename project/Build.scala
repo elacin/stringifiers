@@ -1,9 +1,9 @@
 import com.typesafe.sbt.pgp.PgpKeys
-import com.typesafe.sbt.pgp.PgpKeys._
 import org.scalajs.sbtplugin.ScalaJSPlugin.autoImport._
 import sbt.Keys._
 import sbt._
 import sbtrelease.ReleasePlugin.autoImport._
+
 import scala.xml.Group
 
 object Build extends sbt.Build {
@@ -11,8 +11,8 @@ object Build extends sbt.Build {
 
   override val settings = super.settings ++ Seq(
     organization       := "com.olvind",
-    scalaVersion       := "2.11.7",
-    crossScalaVersions := Seq("2.11.7", "2.10.6"),
+    crossScalaVersions := Seq("2.12.1", "2.11.8", "2.10.6"),
+    scalaVersion       := crossScalaVersions.value.head,
     homepage           := Some(url("http://github.com/oyvindberg/stringifiers"))
   )
 
@@ -74,7 +74,7 @@ object Build extends sbt.Build {
   }
 
   val sharedDeps = Def.setting(Seq(
-    "org.scalatest" %%% "scalatest" % "3.0.0-M15" % Test
+    "org.scalatest" %%% "scalatest" % "3.0.0" % Test
   ))
 
   val stringifiers = crossProject.in(file("stringifiers"))
@@ -88,7 +88,7 @@ object Build extends sbt.Build {
     ).jsSettings(
       scalacOptions       <+= sourceMapTransform
     ).jvmSettings(
-      libraryDependencies ++= Seq("io.argonaut" %% "argonaut" % "6.1" % Test)
+      libraryDependencies ++= Seq("io.argonaut" %% "argonaut" % "6.2-RC2" % Test)
   )
 
   val jvm = stringifiers.jvm
